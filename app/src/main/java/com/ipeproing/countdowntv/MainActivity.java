@@ -35,26 +35,28 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        prefs = CountdownSettings.open(this);
         loadSettings();
         countdownView = new CountdownView(this);
         countdownView.setFocusable(true);
+        countdownView.setOnClickListener(v -> showSettings());
         countdownView.setOnLongClickListener(v -> { showSettings(); return true; });
         setContentView(countdownView);
         countdownView.requestFocus();
     }
 
     private void loadSettings() {
-        projectName = prefs.getString("project", "PROJECT COUNTDOWN");
+        projectName = prefs.getString("project", "KASTRATI");
         long defaultTarget = System.currentTimeMillis() + 100L * 24 * 60 * 60 * 1000;
         targetMillis = prefs.getLong("target", defaultTarget);
     }
 
     private void showSettings() {
         final EditText name = new EditText(this);
-        name.setHint("Project name");
+        name.setHint("Emri i projektit");
         name.setText(projectName);
         name.setSingleLine(true);
+        name.setFilters(new android.text.InputFilter[] { new android.text.InputFilter.LengthFilter(48) });
 
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -63,18 +65,18 @@ public class MainActivity extends Activity {
         box.addView(name);
 
         new AlertDialog.Builder(this)
-                .setTitle("Countdown settings")
+                .setTitle("Konfigurimi")
                 .setView(box)
-                .setMessage("Set project name, then choose the project end date and time.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Choose date", (d, w) -> {
-                    projectName = name.getText().toString().trim();
-                    if (projectName.isEmpty()) projectName = "PROJECT COUNTDOWN";
-                    chooseDateTime();
+                .setMessage("Shkruaj emrin, pastaj zgjidh datën dhe orën e përfundimit.")
+                .setNegativeButton("Anulo", null)
+                .setPositiveButton("Zgjidh datën", (d, w) -> {
+                    String draftName = name.getText().toString().trim();
+                    if (draftName.isEmpty()) draftName = "KASTRATI";
+                    chooseDateTime(draftName);
                 }).show();
     }
 
-    private void chooseDateTime() {
+    private void chooseDateTime(final String draftName) {
         Calendar c = Calendar.getInstance();
         c.setTimeInMillis(targetMillis);
         new DatePickerDialog(this, (view, year, month, day) -> {
@@ -86,22 +88,32 @@ public class MainActivity extends Activity {
                 chosen.set(Calendar.MINUTE, minute);
                 chosen.set(Calendar.SECOND, 0);
                 chosen.set(Calendar.MILLISECOND, 0);
-                targetMillis = chosen.getTimeInMillis();
-                prefs.edit().putString("project", projectName).putLong("target", targetMillis).apply();
+                long draftTarget = chosen.getTimeInMillis();
+                if (!prefs.edit().putString("project", draftName).putLong("target", draftTarget).commit()) {
+                    Toast.makeText(this, "Ruajtja dështoi. Provo përsëri.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                projectName = draftName;
+                targetMillis = draftTarget;
                 countdownView.render(projectName, targetMillis);
-                Toast.makeText(this, "Countdown saved", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Konfigurimi u ruajt", Toast.LENGTH_SHORT).show();
             }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show();
         }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show();
     }
 
-    @Override public boolean onKeyLongPress(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+    @Override public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_MENU) {
             showSettings();
             return true;
         }
-        return super.onKeyLongPress(keyCode, event);
+        return super.onKeyUp(keyCode, event);
     }
 
-    @Override protected void onResume() { super.onResume(); loadSettings(); handler.post(ticker); }
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    }
+    @Override protected void onResume() { super.onResume(); loadSettings(); handler.removeCallbacks(ticker); handler.post(ticker); }
     @Override protected void onPause() { handler.removeCallbacks(ticker); super.onPause(); }
 }

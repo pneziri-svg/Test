@@ -24,8 +24,9 @@ public class CountdownDreamService extends DreamService {
         setInteractive(false);
         setFullscreen(true);
         setScreenBright(true);
-        prefs = getSharedPreferences("countdown", MODE_PRIVATE);
+        prefs = CountdownSettings.open(this);
         view = new CountdownView(this);
+        view.setShowHint(false);
         setContentView(view);
         handler.post(ticker);
     }
